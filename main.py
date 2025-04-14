@@ -77,7 +77,7 @@ async def admin_response(message: types.Message):
     else:
         await message.reply("Сначала нажмите кнопку 'Ответить' под сообщением пользователя.\n\nAvval 'Javob berish' tugmasini bosing.")
 
-# Веб-сервер для UptimeRobot
+# Веб-сервер для Railway
 async def handle(request):
     return web.Response(text="Bot is alive")
 
