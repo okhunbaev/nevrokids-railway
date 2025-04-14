@@ -24,9 +24,11 @@ async def start(message: types.Message):
         InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru"),
         InlineKeyboardButton("🇺🇿 Ўзбекча", callback_data="lang:uz")
     )
-    await message.answer("Здравствуйте! / Ассалому алайкум!
-
-Выберите язык / Тилни танланг:", reply_markup=kb)
+    await message.answer(
+        "Здравствуйте! / Ассалому алайкум!\n\n"
+        "Выберите язык / Тилни танланг:",
+        reply_markup=kb
+    )
 
 @dp.callback_query_handler(lambda c: c.data.startswith("lang:"))
 async def set_lang(callback: types.CallbackQuery):
@@ -37,14 +39,16 @@ async def set_lang(callback: types.CallbackQuery):
             "Язык выбран ✅\n\n"
             "Пожалуйста, полностью сформулируйте свой вопрос.\n"
             f"Вы можете отправить не более {MAX_MESSAGES_PER_DAY} сообщений в сутки.\n"
-            "Напишите ваш вопрос врачу:"
+            "Врач ответит в течение 24 часов.\n\n"
+            "Напишите ваш вопрос:"
         )
     else:
         text = (
             "Тил танланди ✅\n\n"
             "Илтимос, саволингизни тўлиқ баён қилиб ёзинг.\n"
-            f"Кунига {MAX_MESSAGES_PER_DAY} та хабар юборишингиз мумкин.\n"
-            "Саволингизни шифокорга ёзинг:"
+            f"Сиз кунига {MAX_MESSAGES_PER_DAY} та хабар юборишингиз мумкин.\n"
+            "Шифокор 24 соат ичида жавоб беради.\n\n"
+            "Саволингизни ёзинг:"
         )
     await callback.message.edit_text(text)
 
@@ -73,7 +77,7 @@ async def user_message(message: types.Message):
         reply_markup=markup
     )
 
-    reply = "Ваш вопрос отправлен врачу. Ожидайте ответ." if lang == "ru" else "Саволингиз шифокорга юборилди. Жавобни кутинг."
+    reply = "Ваш вопрос отправлен врачу. Ответ поступит в течение 24 часов." if lang == "ru" else "Саволингиз шифокорга юборилди. 24 соат ичида жавоб оласиз."
     await message.reply(reply)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("reply:"))
