@@ -2,17 +2,12 @@ import os
 import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils.executor import start_webhook
+from aiogram.utils.executor import start_polling
 from datetime import datetime
-from aiohttp import web
 
 API_TOKEN = os.getenv("API_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 PORT = int(os.getenv("PORT", 8080))
-
-WEBHOOK_HOST = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}" if os.getenv("RENDER_EXTERNAL_HOSTNAME") else None
-WEBHOOK_PATH = "/webhook"
-WEBAPP_HOST = "0.0.0.0"
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
@@ -82,39 +77,6 @@ async def admin_reply(message: types.Message):
     else:
         await message.answer("Сначала нажмите кнопку 'Ответить'.")
 
-# Aiohttp для Render
-async def health_check(request):
-    return web.Response(text="Bot is alive")
-
-async def on_startup(dp):
-    if WEBHOOK_HOST:
-        await bot.set_webhook(f"{WEBHOOK_HOST}{WEBHOOK_PATH}")
-
-async def on_shutdown(dp):
-    await bot.delete_webhook()
-
-app = web.Application()
-app.router.add_get("/", health_check)
-
-# Запуск бота через webhook или polling
 if __name__ == "__main__":
-    if WEBHOOK_HOST:
-        start_webhook(
-            dispatcher=dp,
-            webhook_path=WEBHOOK_PATH,
-            on_startup=on_startup,
-            on_shutdown=on_shutdown,
-            skip_updates=True,
-            host=WEBAPP_HOST,
-            port=PORT,
-            web_app=app
-        )
-    else:
-        import asyncio
-        async def run():
-            runner = web.AppRunner(app)
-            await runner.setup()
-            site = web.TCPSite(runner, WEBAPP_HOST, PORT)
-            await site.start()
-            await dp.start_polling()
-        asyncio.run(run())
+    from aiogram import executor
+    executor.start_polling(dp, skip_updates=True)
