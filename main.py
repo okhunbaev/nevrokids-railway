@@ -21,16 +21,31 @@ MAX_MESSAGES_PER_DAY = 3
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     kb = InlineKeyboardMarkup(row_width=2).add(
-        InlineKeyboardButton("Русский", callback_data="lang:ru"),
-        InlineKeyboardButton("Ўзбекча", callback_data="lang:uz")
+        InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru"),
+        InlineKeyboardButton("🇺🇿 Ўзбекча", callback_data="lang:uz")
     )
-    await message.answer("Выберите язык / Тилни танланг:", reply_markup=kb)
+    await message.answer("Здравствуйте! / Ассалому алайкум!
+
+Выберите язык / Тилни танланг:", reply_markup=kb)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("lang:"))
 async def set_lang(callback: types.CallbackQuery):
     lang = callback.data.split(":")[1]
     user_lang[callback.from_user.id] = lang
-    text = "Язык выбран ✅\n\nНапишите свой вопрос врачу." if lang == "ru" else "Тил танланди ✅\n\nСаволингизни шифокорга ёзинг."
+    if lang == "ru":
+        text = (
+            "Язык выбран ✅\n\n"
+            "Пожалуйста, полностью сформулируйте свой вопрос.\n"
+            f"Вы можете отправить не более {MAX_MESSAGES_PER_DAY} сообщений в сутки.\n"
+            "Напишите ваш вопрос врачу:"
+        )
+    else:
+        text = (
+            "Тил танланди ✅\n\n"
+            "Илтимос, саволингизни тўлиқ баён қилиб ёзинг.\n"
+            f"Кунига {MAX_MESSAGES_PER_DAY} та хабар юборишингиз мумкин.\n"
+            "Саволингизни шифокорга ёзинг:"
+        )
     await callback.message.edit_text(text)
 
 @dp.message_handler(lambda m: m.from_user.id != ADMIN_ID)
