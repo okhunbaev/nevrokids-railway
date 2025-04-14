@@ -1,91 +1,120 @@
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import logging
 import os
+import logging
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.executor import start_webhook
 from datetime import datetime
 from aiohttp import web
-from threading import Thread
 
 API_TOKEN = os.getenv("API_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 PORT = int(os.getenv("PORT", 8080))
 
-logging.basicConfig(level=logging.INFO)
+WEBHOOK_HOST = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}" if os.getenv("RENDER_EXTERNAL_HOSTNAME") else None
+WEBHOOK_PATH = "/webhook"
+WEBAPP_HOST = "0.0.0.0"
 
+logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-pending_reply_to = {}
+user_lang = {}
 user_limits = {}
+pending_reply_to = {}
 MAX_MESSAGES_PER_DAY = 3
 
-@dp.message_handler(commands=['start'])
-async def start_handler(message: types.Message):
-    await message.reply(
-        "Здравствуйте! Напишите полностью сформулированный вопрос. "
-        f"Вы можете отправить не более {MAX_MESSAGES_PER_DAY} сообщений в сутки.\n\n"
-        "Assalomu alaykum! Savolingizni to‘liq yozing. "
-        f"Kuniga {MAX_MESSAGES_PER_DAY} ta xabar yuborishingiz mumkin."
+@dp.message_handler(commands=["start"])
+async def start(message: types.Message):
+    kb = InlineKeyboardMarkup(row_width=2).add(
+        InlineKeyboardButton("Русский", callback_data="lang:ru"),
+        InlineKeyboardButton("O‘zbek", callback_data="lang:uz")
+    )
+    await message.answer("Выберите язык / Tilni tanlang:", reply_markup=kb)
+
+@dp.callback_query_handler(lambda c: c.data.startswith("lang:"))
+async def set_lang(callback: types.CallbackQuery):
+    lang = callback.data.split(":")[1]
+    user_lang[callback.from_user.id] = lang
+    await callback.message.edit_text(
+        "Язык выбран ✅" if lang == "ru" else "Til tanlandi ✅"
     )
 
-@dp.message_handler(lambda message: message.from_user.id != ADMIN_ID)
-async def handle_user_message(message: types.Message):
-    user_id = message.from_user.id
+@dp.message_handler(lambda m: m.from_user.id != ADMIN_ID)
+async def user_message(message: types.Message):
+    uid = message.from_user.id
+    lang = user_lang.get(uid, "ru")
     today = datetime.now().strftime('%Y-%m-%d')
 
-    if user_id not in user_limits or user_limits[user_id]['date'] != today:
-        user_limits[user_id] = {"count": 0, "date": today}
+    if uid not in user_limits or user_limits[uid]['date'] != today:
+        user_limits[uid] = {"count": 0, "date": today}
 
-    if user_limits[user_id]['count'] >= MAX_MESSAGES_PER_DAY:
-        await message.reply(
-            "Вы уже отправили 3 сообщения сегодня. Пожалуйста, подождите до завтра.\n\n"
-            "Siz bugun 3 ta xabar yubordingiz. Iltimos, ertagacha kuting."
-        )
-        return
+    if user_limits[uid]['count'] >= MAX_MESSAGES_PER_DAY:
+        msg = "Вы уже отправили 3 сообщения сегодня. Подождите до завтра." if lang == "ru" else "Siz bugun 3 ta xabar yubordingiz. Ertaga yozing."
+        return await message.answer(msg)
 
-    user_limits[user_id]['count'] += 1
-
-    username = message.from_user.username or f"ID: {user_id}"
-    text = message.text
-
+    user_limits[uid]['count'] += 1
+    username = message.from_user.username or f"ID: {uid}"
     markup = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("Ответить", callback_data=f"reply:{user_id}")
+        InlineKeyboardButton("Ответить", callback_data=f"reply:{uid}")
     )
+
     await bot.send_message(
         ADMIN_ID,
-        f"Новое обращение от @{username} (ID: {user_id}):\n{text}",
+        f"Новое сообщение от @{username} (ID: {uid}):\n{message.text}",
         reply_markup=markup
     )
-    await message.reply(
-        "Ваш вопрос передан врачу. Ожидайте ответ.\n\n"
-        "Savolingiz shifokorga yuborildi. Javobni kuting."
-    )
+
+    reply = "Ваш вопрос отправлен врачу. Ожидайте ответ." if lang == "ru" else "Savolingiz yuborildi. Javobni kuting."
+    await message.reply(reply)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("reply:"))
-async def reply_callback(callback_query: types.CallbackQuery):
-    user_id = int(callback_query.data.split(":")[1])
-    pending_reply_to[ADMIN_ID] = user_id
-    await bot.send_message(ADMIN_ID, f"Напишите ответ — он будет отправлен пользователю ID {user_id}.\n\nJavob yozing — foydalanuvchiga yuboriladi.")
-    await callback_query.answer("Ожидаю ваш ответ...")
+async def reply_admin(callback: types.CallbackQuery):
+    uid = int(callback.data.split(":")[1])
+    pending_reply_to[ADMIN_ID] = uid
+    await callback.message.answer(f"Напишите ответ пользователю ID {uid}.")
 
-@dp.message_handler(lambda message: message.from_user.id == ADMIN_ID)
-async def admin_response(message: types.Message):
+@dp.message_handler(lambda m: m.from_user.id == ADMIN_ID)
+async def admin_reply(message: types.Message):
     if ADMIN_ID in pending_reply_to:
-        user_id = pending_reply_to.pop(ADMIN_ID)
-        await bot.send_message(user_id, f"Ответ от врача:\n{message.text}\n\nShifokordan javob:\n{message.text}")
-        await message.reply("Ответ отправлен пользователю.\n\nJavob yuborildi.")
+        uid = pending_reply_to.pop(ADMIN_ID)
+        await bot.send_message(uid, f"Ответ от врача:\n{message.text}")
+        await message.answer("Ответ отправлен.")
     else:
-        await message.reply("Сначала нажмите кнопку 'Ответить' под сообщением пользователя.\n\nAvval 'Javob berish' tugmasini bosing.")
+        await message.answer("Сначала нажмите кнопку 'Ответить'.")
 
-# Веб-сервер для Railway
-async def handle(request):
+# Aiohttp для Render
+async def health_check(request):
     return web.Response(text="Bot is alive")
 
-def run_web():
-    app = web.Application()
-    app.router.add_get("/", handle)
-    web.run_app(app, port=PORT)
+async def on_startup(dp):
+    if WEBHOOK_HOST:
+        await bot.set_webhook(f"{WEBHOOK_HOST}{WEBHOOK_PATH}")
 
-if __name__ == '__main__':
-    Thread(target=run_web).start()
-    executor.start_polling(dp, skip_updates=True)
+async def on_shutdown(dp):
+    await bot.delete_webhook()
+
+app = web.Application()
+app.router.add_get("/", health_check)
+
+# Запуск бота через webhook или polling
+if __name__ == "__main__":
+    if WEBHOOK_HOST:
+        start_webhook(
+            dispatcher=dp,
+            webhook_path=WEBHOOK_PATH,
+            on_startup=on_startup,
+            on_shutdown=on_shutdown,
+            skip_updates=True,
+            host=WEBAPP_HOST,
+            port=PORT,
+            web_app=app
+        )
+    else:
+        import asyncio
+        async def run():
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, WEBAPP_HOST, PORT)
+            await site.start()
+            await dp.start_polling()
+        asyncio.run(run())
