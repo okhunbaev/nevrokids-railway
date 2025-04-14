@@ -26,9 +26,9 @@ async def start(message: types.Message):
         InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru"),
         InlineKeyboardButton("🇺🇿 Ўзбекча", callback_data="lang:uz")
     )
-    await message.answer("Здравствуйте! / Ассалому алайкум!
+    await message.answer("""Здравствуйте! / Ассалому алайкум!
 
-Выберите язык / Тилни танланг:", reply_markup=kb)
+Выберите язык / Тилни танланг:""", reply_markup=kb)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("lang:"))
 async def set_lang(callback: types.CallbackQuery):
@@ -100,7 +100,7 @@ async def handle_ping(request):
     return web.Response(text="OK")
 
 async def run():
-    # Запускаем aiohttp сервер, чтобы Render не завершал процесс
+    # aiohttp фейковый сервер для Render
     app = web.Application()
     app.router.add_get("/", handle_ping)
     runner = web.AppRunner(app)
