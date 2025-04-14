@@ -4,6 +4,8 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.executor import start_polling
 from datetime import datetime
+from aiohttp import web
+import asyncio
 
 API_TOKEN = os.getenv("API_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
@@ -24,11 +26,9 @@ async def start(message: types.Message):
         InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru"),
         InlineKeyboardButton("🇺🇿 Ўзбекча", callback_data="lang:uz")
     )
-    await message.answer(
-        "Здравствуйте! / Ассалому алайкум!\n\n"
-        "Выберите язык / Тилни танланг:",
-        reply_markup=kb
-    )
+    await message.answer("Здравствуйте! / Ассалому алайкум!
+
+Выберите язык / Тилни танланг:", reply_markup=kb)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("lang:"))
 async def set_lang(callback: types.CallbackQuery):
@@ -39,16 +39,14 @@ async def set_lang(callback: types.CallbackQuery):
             "Язык выбран ✅\n\n"
             "Пожалуйста, полностью сформулируйте свой вопрос.\n"
             f"Вы можете отправить не более {MAX_MESSAGES_PER_DAY} сообщений в сутки.\n"
-            "Врач ответит в течении 24 часов.\n\n"
-            "Напишите ваш вопрос:"
+            "Напишите ваш вопрос врачу:"
         )
     else:
         text = (
             "Тил танланди ✅\n\n"
             "Илтимос, саволингизни тўлиқ баён қилиб ёзинг.\n"
-            f"Сиз кунига {MAX_MESSAGES_PER_DAY} та хабар юборишингиз мумкин.\n"
-            "Шифокор 24 соат ичида жавоб беради.\n\n"
-            "Саволингизни ёзинг:"
+            f"Кунига {MAX_MESSAGES_PER_DAY} та хабар юборишингиз мумкин.\n"
+            "Саволингизни шифокорга ёзинг:"
         )
     await callback.message.edit_text(text)
 
@@ -77,7 +75,7 @@ async def user_message(message: types.Message):
         reply_markup=markup
     )
 
-    reply = "Ваш вопрос отправлен врачу. Ответ поступит в течение 24 часов." if lang == "ru" else "Саволингиз шифокорга юборилди. 24 соат ичида жавоб оласиз."
+    reply = "Ваш вопрос отправлен врачу. Ожидайте ответ." if lang == "ru" else "Саволингиз шифокорга юборилди. Жавобни кутинг."
     await message.reply(reply)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("reply:"))
@@ -97,6 +95,21 @@ async def admin_reply(message: types.Message):
     else:
         await message.answer("Сначала нажмите кнопку 'Ответить'." if lang == "ru" else "Аввал 'Жавоб бериш' тугмасини босинг.")
 
+# --- AIOHTTP FAKE SERVER для Render ---
+async def handle_ping(request):
+    return web.Response(text="OK")
+
+async def run():
+    # Запускаем aiohttp сервер, чтобы Render не завершал процесс
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+
+    # Запускаем Telegram бота
+    await dp.start_polling()
+
 if __name__ == "__main__":
-    from aiogram import executor
-    executor.start_polling(dp, skip_updates=True)
+    asyncio.run(run())
